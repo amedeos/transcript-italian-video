@@ -60,13 +60,14 @@ def write_json(data: dict, output_path: Path):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def trascrivi(input_file: str, beam_size: int = 5):
+def trascrivi(input_file: str, beam_size: int = 5, language: str = "it"):
     """
     Esegue la trascrizione del file MP4.
 
     Args:
         input_file: Path del file MP4 da trascrivere
         beam_size: Dimensione del beam search (default 5)
+        language: Codice lingua per la trascrizione (default "it")
     """
     input_path = Path(input_file).resolve()
 
@@ -111,7 +112,7 @@ def trascrivi(input_file: str, beam_size: int = 5):
         sys.exit(1)
 
     print(f"Modello caricato. Inizio trascrizione di: {input_path.name}")
-    print(f"Parametri: beam_size={beam_size}, vad_filter=True, lingua=italiano")
+    print(f"Parametri: beam_size={beam_size}, vad_filter=True, lingua={language}")
     print("-" * 60)
 
     # Trascrizione
@@ -119,7 +120,7 @@ def trascrivi(input_file: str, beam_size: int = 5):
     try:
         segments_generator, info = model.transcribe(
             str(input_path),
-            language="it",
+            language=language,
             beam_size=beam_size,
             vad_filter=True,
             vad_parameters=dict(
@@ -162,9 +163,10 @@ def trascrivi(input_file: str, beam_size: int = 5):
     output_dir = input_path.parent
     base_name = input_path.stem
 
-    txt_path = output_dir / f"{base_name}_trascrizione.txt"
-    srt_path = output_dir / f"{base_name}_trascrizione.srt"
-    json_path = output_dir / f"{base_name}_trascrizione.json"
+    suffix = "transcript" if language == "en" else "trascrizione"
+    txt_path = output_dir / f"{base_name}_{suffix}.txt"
+    srt_path = output_dir / f"{base_name}_{suffix}.srt"
+    json_path = output_dir / f"{base_name}_{suffix}.json"
 
     # Prepara JSON con metadata completi
     json_data = {
@@ -176,7 +178,7 @@ def trascrivi(input_file: str, beam_size: int = 5):
             "compute_type": compute_type,
             "beam_size": beam_size,
             "vad_filter": True,
-            "lingua_impostata": "it",
+            "lingua_impostata": language,
         },
         "info_audio": {
             "lingua_rilevata": info.language,
@@ -211,6 +213,7 @@ def main():
 Esempi:
   %(prog)s video.mp4
   %(prog)s video.mp4 --beam_size 10
+  %(prog)s video.mp4 --language en
         """
     )
     parser.add_argument(
@@ -223,9 +226,15 @@ Esempi:
         default=5,
         help="Dimensione beam search per accuratezza (default: 5, aumentare per maggiore precisione)"
     )
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="it",
+        help="Codice lingua per la trascrizione (default: it). Esempi: it, en, de, fr, es"
+    )
 
     args = parser.parse_args()
-    trascrivi(args.input_file, args.beam_size)
+    trascrivi(args.input_file, args.beam_size, args.language)
 
 
 if __name__ == "__main__":
