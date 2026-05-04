@@ -12,6 +12,22 @@ from datetime import datetime
 from pathlib import Path
 
 
+DEFAULT_PROMPTS = {
+    "it": (
+        "Buongiorno, oggi parliamo di un argomento interessante. "
+        "La discussione tocca diversi temi, dall'attualità alla cultura, "
+        "passando per la tecnologia. I relatori, tra cui Marco Rossi e "
+        "Anna Bianchi, presentano le loro idee con chiarezza."
+    ),
+    "en": (
+        "Good morning, today we discuss an interesting topic. "
+        "The conversation covers a range of themes, from current events "
+        "to culture, including technology. The speakers, among them "
+        "John Smith and Jane Doe, present their ideas with clarity."
+    ),
+}
+
+
 def check_cuda_available():
     """Verifica disponibilità CUDA con supporto float16."""
     try:
@@ -60,7 +76,21 @@ def write_json(data: dict, output_path: Path):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def trascrivi(input_file: str, beam_size: int = 5, language: str = "it"):
+def _leggi_file_testo(path: str, etichetta: str) -> str:
+    """Legge un file UTF-8 e ne restituisce il contenuto, con strip()."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"Errore: file {etichetta} non trovato: {path}")
+        sys.exit(1)
+    except OSError as e:
+        print(f"Errore durante la lettura del file {etichetta} '{path}': {e}")
+        sys.exit(1)
+
+
+def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
+              initial_prompt=None, hotwords=None):
     """
     Esegue la trascrizione del file MP4.
 
@@ -68,6 +98,10 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it"):
         input_file: Path del file MP4 da trascrivere
         beam_size: Dimensione del beam search (default 5)
         language: Codice lingua per la trascrizione (default "it")
+        initial_prompt: Testo di esempio per orientare stile e punteggiatura
+            (None = non specificato, "" = disabilitato, default None)
+        hotwords: Parole chiave da privilegiare nella trascrizione
+            (None = non specificato, "" = disabilitato, default None)
     """
     input_path = Path(input_file).resolve()
 
@@ -111,22 +145,32 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it"):
             print("Problema con CUDA. Verificare driver NVIDIA e installazione CUDA.")
         sys.exit(1)
 
+    prompt_display = "(nessuno)" if not initial_prompt else (
+        initial_prompt if len(initial_prompt) <= 80 else initial_prompt[:80] + "..."
+    )
+    hotwords_display = "(nessuno)" if not hotwords else hotwords
+
     print(f"Modello caricato. Inizio trascrizione di: {input_path.name}")
     print(f"Parametri: beam_size={beam_size}, vad_filter=True, lingua={language}")
+    print(f"           prompt iniziale: {prompt_display}")
+    print(f"           hotwords: {hotwords_display}")
     print("-" * 60)
 
     # Trascrizione
+    transcribe_kwargs = dict(
+        language=language,
+        beam_size=beam_size,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
+    if initial_prompt:
+        transcribe_kwargs["initial_prompt"] = initial_prompt
+    if hotwords:
+        transcribe_kwargs["hotwords"] = hotwords
+
     start_time = datetime.now()
     try:
-        segments_generator, info = model.transcribe(
-            str(input_path),
-            language=language,
-            beam_size=beam_size,
-            vad_filter=True,
-            vad_parameters=dict(
-                min_silence_duration_ms=500,
-            ),
-        )
+        segments_generator, info = model.transcribe(str(input_path), **transcribe_kwargs)
     except Exception as e:
         print(f"Errore durante la trascrizione: {e}")
         sys.exit(1)
@@ -179,6 +223,8 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it"):
             "beam_size": beam_size,
             "vad_filter": True,
             "lingua_impostata": language,
+            "prompt_iniziale": initial_prompt if initial_prompt else None,
+            "hotwords": hotwords if hotwords else None,
         },
         "info_audio": {
             "lingua_rilevata": info.language,
@@ -214,6 +260,9 @@ Esempi:
   %(prog)s video.mp4
   %(prog)s video.mp4 --beam_size 10
   %(prog)s video.mp4 --language en
+  %(prog)s video.mp4 --prompt "Glossario tecnico: API, GPU, microservizi."
+  %(prog)s video.mp4 --hotwords "Anthropic Claude faster-whisper"
+  %(prog)s video.mp4 --no-prompt
         """
     )
     parser.add_argument(
@@ -233,8 +282,68 @@ Esempi:
         help="Codice lingua per la trascrizione (default: it). Esempi: it, en, de, fr, es"
     )
 
+    prompt_group = parser.add_mutually_exclusive_group()
+    prompt_group.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Testo di esempio per orientare stile, punteggiatura, terminologia (max ~224 token)"
+    )
+    prompt_group.add_argument(
+        "--prompt-file",
+        type=str,
+        default=None,
+        help="File UTF-8 il cui contenuto verrà usato come prompt iniziale"
+    )
+    prompt_group.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Disabilita il prompt iniziale (anche il default italiano)"
+    )
+
+    hotwords_group = parser.add_mutually_exclusive_group()
+    hotwords_group.add_argument(
+        "--hotwords",
+        type=str,
+        default=None,
+        help="Parole chiave da privilegiare (nomi propri, termini tecnici)"
+    )
+    hotwords_group.add_argument(
+        "--hotwords-file",
+        type=str,
+        default=None,
+        help="File UTF-8 con le hotwords"
+    )
+    hotwords_group.add_argument(
+        "--no-hotwords",
+        action="store_true",
+        help="Disabilita esplicitamente le hotwords"
+    )
+
     args = parser.parse_args()
-    trascrivi(args.input_file, args.beam_size, args.language)
+
+    # Risolvi initial_prompt
+    if args.no_prompt:
+        resolved_prompt = ""
+    elif args.prompt is not None:
+        resolved_prompt = args.prompt
+    elif args.prompt_file is not None:
+        resolved_prompt = _leggi_file_testo(args.prompt_file, "prompt")
+    else:
+        resolved_prompt = DEFAULT_PROMPTS.get(args.language)
+
+    # Risolvi hotwords
+    if args.no_hotwords:
+        resolved_hotwords = ""
+    elif args.hotwords is not None:
+        resolved_hotwords = args.hotwords
+    elif args.hotwords_file is not None:
+        resolved_hotwords = _leggi_file_testo(args.hotwords_file, "hotwords")
+    else:
+        resolved_hotwords = None
+
+    trascrivi(args.input_file, args.beam_size, args.language,
+              initial_prompt=resolved_prompt, hotwords=resolved_hotwords)
 
 
 if __name__ == "__main__":

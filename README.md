@@ -34,10 +34,30 @@ python trascrivi.py <file_video.mp4> [--beam_size N] [--language CODICE]
 | `--beam_size` | Dimensione beam search (maggiore = più accurato ma più lento) | 5 |
 | `--language` | Codice lingua per la trascrizione (es. `it`, `en`, `de`, `fr`, `es`) | `it` |
 
+#### Prompt iniziale (mutex)
+
+Testo di esempio che Whisper imita per stile, punteggiatura, capitalizzazione e terminologia. Cap a ~224 token (oltre viene troncato silenziosamente). Per `--language=it` e `--language=en` viene applicato un prompt predefinito nella lingua corrispondente; per altre lingue nessun default (passa esplicitamente `--prompt`/`--prompt-file` se necessario).
+
+| Argomento | Descrizione |
+|-----------|-------------|
+| `--prompt "..."` | Testo del prompt iniziale inline |
+| `--prompt-file path.txt` | Legge il prompt da un file UTF-8 |
+| `--no-prompt` | Disabilita il prompt (anche il default italiano) |
+
+#### Hotwords (mutex)
+
+Parole chiave (nomi propri, gergo, sigle) che il decoder favorisce probabilisticamente. Non influisce su stile/punteggiatura.
+
+| Argomento | Descrizione |
+|-----------|-------------|
+| `--hotwords "..."` | Lista di parole chiave inline (separate da spazi) |
+| `--hotwords-file path.txt` | Legge le hotwords da un file UTF-8 |
+| `--no-hotwords` | Disabilita esplicitamente le hotwords |
+
 ### Esempi
 
 ```bash
-# Trascrizione standard (italiano)
+# Trascrizione standard (italiano, prompt di default attivo)
 python trascrivi.py intervista.mp4
 
 # Trascrizione ad alta accuratezza
@@ -45,6 +65,18 @@ python trascrivi.py intervista.mp4 --beam_size 10
 
 # Trascrizione di un video in inglese
 python trascrivi.py interview.mp4 --language en
+
+# Override del prompt italiano per un podcast tecnico
+python trascrivi.py podcast.mp4 --prompt "Glossario tecnico: API, GPU, microservizi, Kubernetes."
+
+# Bias su nomi propri specifici
+python trascrivi.py intervista.mp4 --hotwords "Anthropic Claude faster-whisper"
+
+# Lingua non italiana con prompt da file
+python trascrivi.py interview_en.mp4 --language en --prompt-file domain_glossary.txt
+
+# Disabilita il prompt di default
+python trascrivi.py intervista.mp4 --no-prompt
 ```
 
 ## Output
