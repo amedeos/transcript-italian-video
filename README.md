@@ -11,18 +11,19 @@ Script Python per trascrivere audio da file MP4 usando [faster-whisper](https://
 ## Installazione
 
 ```bash
-# Attiva il virtualenv
+# Crea e attiva il virtualenv
+python3 -m venv venv
 source venv/bin/activate
 
-# Installa dipendenze (se non già presenti)
-pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12
+# Installa dipendenze
+pip install -r requirements.txt
 ```
 
 ## Uso
 
 ```bash
 source venv/bin/activate
-python trascrivi.py <file_video.mp4> [--beam_size N]
+python trascrivi.py <file_video.mp4> [--beam_size N] [--language CODICE]
 ```
 
 ### Argomenti
@@ -31,26 +32,30 @@ python trascrivi.py <file_video.mp4> [--beam_size N]
 |-----------|-------------|---------|
 | `input_file` | Path del file MP4 da trascrivere | (obbligatorio) |
 | `--beam_size` | Dimensione beam search (maggiore = più accurato ma più lento) | 5 |
+| `--language` | Codice lingua per la trascrizione (es. `it`, `en`, `de`, `fr`, `es`) | `it` |
 
 ### Esempi
 
 ```bash
-# Trascrizione standard
+# Trascrizione standard (italiano)
 python trascrivi.py intervista.mp4
 
 # Trascrizione ad alta accuratezza
 python trascrivi.py intervista.mp4 --beam_size 10
+
+# Trascrizione di un video in inglese
+python trascrivi.py interview.mp4 --language en
 ```
 
 ## Output
 
-Lo script genera tre file nella stessa directory del video sorgente:
+Lo script genera tre file nella stessa directory del video sorgente. Il suffisso del nome file dipende dalla lingua: `transcript` se `--language en`, altrimenti `trascrizione`.
 
 | File | Formato | Contenuto |
 |------|---------|-----------|
-| `[nome]_trascrizione.txt` | Testo | Solo testo, un segmento per riga |
-| `[nome]_trascrizione.srt` | SubRip | Sottotitoli con timestamp |
-| `[nome]_trascrizione.json` | JSON | Metadata completi |
+| `[nome]_trascrizione.txt` (o `_transcript.txt`) | Testo | Solo testo, un segmento per riga |
+| `[nome]_trascrizione.srt` (o `_transcript.srt`) | SubRip | Sottotitoli con timestamp |
+| `[nome]_trascrizione.json` (o `_transcript.json`) | JSON | Metadata completi |
 
 ### Struttura JSON
 
@@ -97,7 +102,7 @@ Lo script usa automaticamente:
 - **Device**: CUDA se disponibile, altrimenti CPU
 - **Compute type**: float16 su GPU, int8 su CPU
 - **VAD filter**: Attivo (salta automaticamente i silenzi)
-- **Lingua**: Italiano
+- **Lingua**: Italiano (modificabile con `--language`)
 
 ## Troubleshooting
 
@@ -110,7 +115,7 @@ Se lo script usa CPU nonostante la GPU disponibile:
 nvidia-smi
 
 # Reinstalla librerie CUDA
-pip install --force-reinstall nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install --force-reinstall -r requirements.txt
 ```
 
 ### Memoria GPU insufficiente
