@@ -34,17 +34,17 @@ python trascrivi.py <file_video.mp4> [--beam_size N] [--language CODICE]
 | `--beam_size` | Dimensione beam search (maggiore = più accurato ma più lento) | 5 |
 | `--language` | Codice lingua per la trascrizione (es. `it`, `en`, `de`, `fr`, `es`) | `it` |
 
-#### Prompt iniziale (mutex)
+#### Prompt iniziale (mutex, opt-in)
 
-Testo di esempio che Whisper imita per stile, punteggiatura, capitalizzazione e terminologia. Cap a ~224 token (oltre viene troncato silenziosamente). Per `--language=it` e `--language=en` viene applicato un prompt predefinito nella lingua corrispondente; per altre lingue nessun default (passa esplicitamente `--prompt`/`--prompt-file` se necessario).
+Testo di esempio che Whisper imita per stile, punteggiatura, capitalizzazione e terminologia. Cap a ~224 token (oltre viene troncato silenziosamente). Nessun prompt di default: senza flag il modello gira con i parametri vanilla di Whisper.
 
 | Argomento | Descrizione |
 |-----------|-------------|
 | `--prompt "..."` | Testo del prompt iniziale inline |
 | `--prompt-file path.txt` | Legge il prompt da un file UTF-8 |
-| `--no-prompt` | Disabilita il prompt (anche il default italiano) |
+| `--no-prompt` | Disabilita esplicitamente il prompt iniziale |
 
-#### Hotwords (mutex)
+#### Hotwords (mutex, opt-in)
 
 Parole chiave (nomi propri, gergo, sigle) che il decoder favorisce probabilisticamente. Non influisce su stile/punteggiatura.
 
@@ -54,10 +54,18 @@ Parole chiave (nomi propri, gergo, sigle) che il decoder favorisce probabilistic
 | `--hotwords-file path.txt` | Legge le hotwords da un file UTF-8 |
 | `--no-hotwords` | Disabilita esplicitamente le hotwords |
 
+#### Anti-loop (opt-in)
+
+Mitigazioni contro le hallucination cicliche di Whisper (la stessa frase ripetuta a cadenza ~30s, tipica di pause lunghe o audio a bassa energia). Quando il flag è attivo lo script imposta `condition_on_previous_text=False`, `compression_ratio_threshold=2.0`, `no_speech_threshold=0.5`. Da usare solo quando si osservano ripetizioni; ha un costo di coerenza inter-finestra (nomi propri/terminologia possono variare leggermente tra finestre).
+
+| Argomento | Descrizione |
+|-----------|-------------|
+| `--anti-loop` | Attiva le tre mitigazioni in blocco |
+
 ### Esempi
 
 ```bash
-# Trascrizione standard (italiano, prompt di default attivo)
+# Trascrizione standard (parametri Whisper vanilla)
 python trascrivi.py intervista.mp4
 
 # Trascrizione ad alta accuratezza
@@ -66,17 +74,17 @@ python trascrivi.py intervista.mp4 --beam_size 10
 # Trascrizione di un video in inglese
 python trascrivi.py interview.mp4 --language en
 
-# Override del prompt italiano per un podcast tecnico
+# Prompt iniziale per stile/punteggiatura/glossario
 python trascrivi.py podcast.mp4 --prompt "Glossario tecnico: API, GPU, microservizi, Kubernetes."
 
-# Bias su nomi propri specifici
+# Bias su nomi propri/termini specifici
 python trascrivi.py intervista.mp4 --hotwords "Anthropic Claude faster-whisper"
 
-# Lingua non italiana con prompt da file
-python trascrivi.py interview_en.mp4 --language en --prompt-file domain_glossary.txt
+# Prompt da file per glossari più lunghi
+python trascrivi.py meeting.mp4 --prompt-file domain_glossary.txt
 
-# Disabilita il prompt di default
-python trascrivi.py intervista.mp4 --no-prompt
+# Combinato: prompt + hotwords + anti-loop su un meeting con ripetizioni
+python trascrivi.py meeting.mp4 --prompt-file glossario.txt --hotwords "OpenShift Kubernetes RHACS" --anti-loop
 ```
 
 ## Output

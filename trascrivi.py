@@ -12,12 +12,6 @@ from datetime import datetime
 from pathlib import Path
 
 
-DEFAULT_PROMPTS = {
-    "it": "Punteggiatura completa con maiuscole sui nomi propri. Marco Rossi e Anna Bianchi parlano.",
-    "en": "Full punctuation with capitalized proper nouns. John Smith and Jane Doe are speaking.",
-}
-
-
 def check_cuda_available():
     """Verifica disponibilità CUDA con supporto float16."""
     try:
@@ -80,7 +74,7 @@ def _leggi_file_testo(path: str, etichetta: str) -> str:
 
 
 def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
-              initial_prompt=None, hotwords=None):
+              initial_prompt=None, hotwords=None, anti_loop: bool = False):
     """
     Esegue la trascrizione del file MP4.
 
@@ -92,6 +86,8 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
             (None = non specificato, "" = disabilitato, default None)
         hotwords: Parole chiave da privilegiare nella trascrizione
             (None = non specificato, "" = disabilitato, default None)
+        anti_loop: Se True applica le mitigazioni contro le hallucination
+            cicliche di Whisper (default False)
     """
     input_path = Path(input_file).resolve()
 
@@ -144,6 +140,7 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
     print(f"Parametri: beam_size={beam_size}, vad_filter=True, lingua={language}")
     print(f"           prompt iniziale: {prompt_display}")
     print(f"           hotwords: {hotwords_display}")
+    print(f"           anti-loop: {'attivo' if anti_loop else 'no'}")
     print("-" * 60)
 
     # Trascrizione
@@ -152,10 +149,11 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
         beam_size=beam_size,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
-        condition_on_previous_text=False,
-        compression_ratio_threshold=2.0,
-        no_speech_threshold=0.5,
     )
+    if anti_loop:
+        transcribe_kwargs["condition_on_previous_text"] = False
+        transcribe_kwargs["compression_ratio_threshold"] = 2.0
+        transcribe_kwargs["no_speech_threshold"] = 0.5
     if initial_prompt:
         transcribe_kwargs["initial_prompt"] = initial_prompt
     if hotwords:
@@ -218,9 +216,10 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
             "lingua_impostata": language,
             "prompt_iniziale": initial_prompt if initial_prompt else None,
             "hotwords": hotwords if hotwords else None,
-            "condition_on_previous_text": False,
-            "compression_ratio_threshold": 2.0,
-            "no_speech_threshold": 0.5,
+            "anti_loop": anti_loop,
+            "condition_on_previous_text": False if anti_loop else None,
+            "compression_ratio_threshold": 2.0 if anti_loop else None,
+            "no_speech_threshold": 0.5 if anti_loop else None,
         },
         "info_audio": {
             "lingua_rilevata": info.language,
@@ -258,6 +257,7 @@ Esempi:
   %(prog)s video.mp4 --language en
   %(prog)s video.mp4 --prompt "Glossario tecnico: API, GPU, microservizi."
   %(prog)s video.mp4 --hotwords "Anthropic Claude faster-whisper"
+  %(prog)s video.mp4 --anti-loop
   %(prog)s video.mp4 --no-prompt
         """
     )
@@ -294,7 +294,7 @@ Esempi:
     prompt_group.add_argument(
         "--no-prompt",
         action="store_true",
-        help="Disabilita il prompt iniziale (anche il default italiano)"
+        help="Disabilita esplicitamente il prompt iniziale"
     )
 
     hotwords_group = parser.add_mutually_exclusive_group()
@@ -316,6 +316,13 @@ Esempi:
         help="Disabilita esplicitamente le hotwords"
     )
 
+    parser.add_argument(
+        "--anti-loop",
+        action="store_true",
+        help="Mitiga le hallucination cicliche di Whisper "
+             "(condition_on_previous_text=False, soglie più aggressive)"
+    )
+
     args = parser.parse_args()
 
     # Risolvi initial_prompt
@@ -326,7 +333,7 @@ Esempi:
     elif args.prompt_file is not None:
         resolved_prompt = _leggi_file_testo(args.prompt_file, "prompt")
     else:
-        resolved_prompt = DEFAULT_PROMPTS.get(args.language)
+        resolved_prompt = None
 
     # Risolvi hotwords
     if args.no_hotwords:
@@ -339,7 +346,8 @@ Esempi:
         resolved_hotwords = None
 
     trascrivi(args.input_file, args.beam_size, args.language,
-              initial_prompt=resolved_prompt, hotwords=resolved_hotwords)
+              initial_prompt=resolved_prompt, hotwords=resolved_hotwords,
+              anti_loop=args.anti_loop)
 
 
 if __name__ == "__main__":
