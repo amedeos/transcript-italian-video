@@ -13,18 +13,8 @@ from pathlib import Path
 
 
 DEFAULT_PROMPTS = {
-    "it": (
-        "Buongiorno, oggi parliamo di un argomento interessante. "
-        "La discussione tocca diversi temi, dall'attualità alla cultura, "
-        "passando per la tecnologia. I relatori, tra cui Marco Rossi e "
-        "Anna Bianchi, presentano le loro idee con chiarezza."
-    ),
-    "en": (
-        "Good morning, today we discuss an interesting topic. "
-        "The conversation covers a range of themes, from current events "
-        "to culture, including technology. The speakers, among them "
-        "John Smith and Jane Doe, present their ideas with clarity."
-    ),
+    "it": "Punteggiatura completa con maiuscole sui nomi propri. Marco Rossi e Anna Bianchi parlano.",
+    "en": "Full punctuation with capitalized proper nouns. John Smith and Jane Doe are speaking.",
 }
 
 
@@ -162,6 +152,9 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
         beam_size=beam_size,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
+        condition_on_previous_text=False,
+        compression_ratio_threshold=2.0,
+        no_speech_threshold=0.5,
     )
     if initial_prompt:
         transcribe_kwargs["initial_prompt"] = initial_prompt
@@ -225,6 +218,9 @@ def trascrivi(input_file: str, beam_size: int = 5, language: str = "it",
             "lingua_impostata": language,
             "prompt_iniziale": initial_prompt if initial_prompt else None,
             "hotwords": hotwords if hotwords else None,
+            "condition_on_previous_text": False,
+            "compression_ratio_threshold": 2.0,
+            "no_speech_threshold": 0.5,
         },
         "info_audio": {
             "lingua_rilevata": info.language,
